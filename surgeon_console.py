@@ -12,6 +12,8 @@ import threading
 import numpy as np
 import time
 import math
+import urllib.request
+import json
 from collections import deque
 from PIL import Image, ImageDraw, ImageFont
 from qsdc_engine import QSDCEngine, int_to_bin_str, bin_str_to_int
@@ -42,6 +44,7 @@ decoherence_risk = 0.0
 qber_rate = 1.1 # Initial error rate
 protocol_sync = 99.8 # Universal Standard Layer
 FORCE_THRESHOLD = 180
+remote_keys = []
 
 # History for the dual graphs on the right
 force_history = deque([0] * 100, maxlen=100)
@@ -310,6 +313,18 @@ def render_ui(frame):
 
     return cv2.cvtColor(np.array(img.convert("RGB")), cv2.COLOR_RGB2BGR)
 
+def play_alarm():
+    """Plays an emergency siren sound during a quantum breach."""
+    try:
+        import winsound
+        while lockdown:
+            winsound.Beep(1500, 400)
+            if not lockdown: break
+            winsound.Beep(1000, 400)
+            time.sleep(0.05)
+    except:
+        pass
+
 # --- Comms Boilerplate ---
 def qsdc_console_server():
     global force_applied, quantum_integrity, breach_detected, lockdown, latency_ms, socket_active, hw_active, quantum_latency_active, hacker_attack_active, qml_prediction_active, prediction_accuracy, qber_rate, quantum_stability, qec_repair_count, decoherence_risk
@@ -396,6 +411,9 @@ def qsdc_console_server():
                                 try:
                                     conn.sendall(b"XX") 
                                 except: pass
+                                
+                                # Trigger local alarm siren
+                                threading.Thread(target=play_alarm, daemon=True).start()
                                 
                                 break
                             else:
@@ -489,11 +507,45 @@ def generate_ecg(t):
     t_wave = 0.2 * math.exp(-((t - 0.7)**2) / 0.01)
     return (p + q + r + s + t_wave)
 
+def push_to_dashboard():
+    """Pushes live telemetry to the local web dashboard and fetches remote commands."""
+    url_push = "http://127.0.0.1:8000/api/telemetry"
+    url_cmd = "http://127.0.0.1:8000/api/command"
+    while True:
+        try:
+            data = {
+                "force": int(force_applied),
+                "integrity": int(quantum_integrity),
+                "qber": float(qber_rate),
+                "stability": float(quantum_stability),
+                "qec_repairs": int(qec_repair_count),
+                "joystick_x": int(joystick_x),
+                "joystick_y": int(joystick_y),
+                "latency_ms": int(latency_ms),
+                "protocol_sync": float(protocol_sync),
+                "connected": bool(socket_active),
+            }
+            req = urllib.request.Request(url_push, method="POST")
+            req.add_header('Content-Type', 'application/json')
+            jsondata = json.dumps(data).encode('utf-8')
+            with urllib.request.urlopen(req, data=jsondata, timeout=0.1) as f:
+                pass
+                
+            req2 = urllib.request.Request(url_cmd)
+            with urllib.request.urlopen(req2, timeout=0.1) as f2:
+                resp = json.loads(f2.read().decode('utf-8'))
+                if resp.get("commands"):
+                    remote_keys.extend(resp["commands"])
+        except Exception:
+            pass
+        time.sleep(0.1)
+
 def main():
     global precision_mode, joystick_x, joystick_y, quantum_latency_active, hacker_attack_active, lockdown, breach_detected, quantum_integrity, qml_prediction_active
     print("[Console UI] Starting Simulation Threads...")
     threading.Thread(target=qsdc_console_server, daemon=True).start()
     threading.Thread(target=simulation_heartbeat, daemon=True).start()
+    threading.Thread(target=push_to_dashboard, daemon=True).start()
     try:
         cv2.namedWindow("Haptic-Q Pro Console", cv2.WINDOW_NORMAL)
         cv2.resizeWindow("Haptic-Q Pro Console", WIDTH, HEIGHT)
@@ -549,25 +601,35 @@ def main():
             except:
                 pass # Headless mode - skip showing window
             key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'): break
-            elif key == ord('m'): precision_mode = not precision_mode
-            elif key == ord('k'): quantum_latency_active = not quantum_latency_active
-            elif key == ord('p'): qml_prediction_active = not qml_prediction_active
-            elif key == ord('h'): hacker_attack_active = True
-            elif key == ord('r'):
-                hacker_attack_active = False
-                lockdown = False
-                breach_detected = False
-                quantum_integrity = 100
             
-            # Adjustable Step Sensitivity
-            step = 2 if precision_mode else 10
+            keys_to_process = []
+            if key != 255:
+                keys_to_process.append(chr(key).lower() if key < 256 else '')
+            keys_to_process.extend(remote_keys)
+            remote_keys.clear()
             
-            # Manual adjustment
-            if key == ord('w'): joystick_y = min(255, joystick_y + step)
-            if key == ord('s'): joystick_y = max(0, joystick_y - step)
-            if key == ord('a'): joystick_x = max(0, joystick_x - step)
-            if key == ord('d'): joystick_x = min(255, joystick_x + step)
+            for k in keys_to_process:
+                if k == 'm': precision_mode = not precision_mode
+                elif k == 'k': quantum_latency_active = not quantum_latency_active
+                elif k == 'p': qml_prediction_active = not qml_prediction_active
+                elif k == 'h': hacker_attack_active = True
+                elif k == 'r':
+                    hacker_attack_active = False
+                    lockdown = False
+                    breach_detected = False
+                    quantum_integrity = 100
+                
+                # Adjustable Step Sensitivity
+                step = 2 if precision_mode else 10
+                
+                # Manual adjustment
+                if k == 'w': joystick_y = min(255, joystick_y + step)
+                elif k == 's': joystick_y = max(0, joystick_y - step)
+                elif k == 'a': joystick_x = max(0, joystick_x - step)
+                elif k == 'd': joystick_x = min(255, joystick_x + step)
+
+            if 'q' in keys_to_process:
+                break
     except Exception as e:
         print(f"[Console UI] CRITICAL ERROR IN MAIN LOOP: {e}")
     finally:

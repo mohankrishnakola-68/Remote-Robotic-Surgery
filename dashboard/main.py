@@ -33,6 +33,24 @@ async def get_telemetry():
     with _tele_lock:
         return JSONResponse(_telemetry)
 
+_commands = []
+_cmd_lock = threading.Lock()
+
+@app.post("/api/command")
+async def push_command(request: Request):
+    data = await request.json()
+    with _cmd_lock:
+        if data.get("key"):
+            _commands.append(data.get("key"))
+    return {"ok": True}
+
+@app.get("/api/command")
+async def get_commands():
+    with _cmd_lock:
+        cmds = _commands.copy()
+        _commands.clear()
+        return JSONResponse({"commands": cmds})
+
 # ── Camera setup ─────────────────────────────────────────────────
 _camera      = None
 _camera_lock = threading.Lock()
@@ -459,6 +477,18 @@ async def get_dashboard():
 
         } catch(e) { /* server not ready yet, skip */ }
     }
+
+    // Listen for keys to send back to python backend
+    document.addEventListener('keydown', (e) => {
+        const k = e.key.toLowerCase();
+        if (['w', 'a', 's', 'd', 'h', 'r', 'k', 'p', 'm', 'q'].includes(k)) {
+            fetch('/api/command', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({key: k})
+            });
+        }
+    });
 
     // Run both loops
     setInterval(integrityPulse, 50);    // 20 Hz — quantum heartbeat always
