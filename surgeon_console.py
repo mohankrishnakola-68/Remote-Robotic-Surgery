@@ -433,51 +433,48 @@ def qsdc_console_server():
             except: continue
 
 def simulation_heartbeat():
-    """Dedicated thread to ensure Quantum Simulation (Issue 1, 2, 3) is ALWAYS live and original."""
+    """Issue 4 — Network Stability: Keeps all quantum metrics live at 20Hz."""
     global quantum_stability, qber_rate, qec_repair_count, decoherence_risk, quantum_integrity, prediction_accuracy, force_applied, protocol_sync
     while True:
         try:
-            # SIMULATING NATURAL QUANTUM ENVIRONMENT (Aesthetic Heartbeat)
+            # Issue 4 — Natural quantum noise (always live, even when idle)
             noise = np.sin(time.time() * 2.0) * 3 + np.random.normal(0, 0.5)
             quantum_stability = max(80.0, min(100.0, 96.0 + noise))
-            
-            # Protocol Sync Flutter (Fixing Lack of Standard protocols)
+
+            # Issue 6 — Standard Protocol Sync metric always running
             protocol_sync = 99.8 + math.sin(time.time() * 0.5) * 0.15 + np.random.uniform(0, 0.05)
-            
+
             if not socket_active:
-                # Idle Simulation: Sync metrics with the ECG Pulse
-                pulse = generate_ecg(time.time())
-                qber_rate = max(1.0, 5.0 - (pulse * 4.0) + np.random.uniform(0, 0.5))
-                # Stability follows noise when idle
+                # Issue 4 — Idle ECG heartbeat simulation (do NOT override to 0 — that was the bug)
+                pulse    = generate_ecg(time.time())
+                qber_rate = max(0.3, 5.0 - (pulse * 4.0) + np.random.uniform(0, 0.5))
             else:
-                # Active Connection: More extreme physics
+                # Issue 1 & 4 — Active connection: QEC-mitigated decoherence
                 decoherence_risk = 100.0 - quantum_stability
                 if decoherence_risk > 5.0:
                     qec_repair_count += int(decoherence_risk * 5)
-                
+
                 if hacker_attack_active:
-                    qber_rate = np.random.uniform(30.0, 60.0)
+                    qber_rate = np.random.uniform(30.0, 60.0)   # Issue 2: breach
                 else:
-                    # QEC Mitigation logic
-                    qber_rate = max(0.2, (100.0 - quantum_stability) * 0.4 * (1.0 - (qec_repair_count % 50 / 100.0)))
+                    qber_rate = max(0.2, (100.0 - quantum_stability) * 0.4 *
+                                   (1.0 - (qec_repair_count % 50 / 100.0)))
 
             quantum_integrity = int(100 - qber_rate)
             integrity_history.append(quantum_integrity)
             stability_history.append(quantum_stability)
-            
+
+            # Issue 5 — Technical failure: force=0 when no hardware
             if not socket_active or not hw_active:
-                # Hardware not inserted or connection lost -> Force must be 0
                 force_applied = 0
                 force_history.append(0)
-                if not socket_active:
-                    # Generic background error when idle
-                    qber_rate = 0.0
-                
                 if not qml_prediction_active:
                     prediction_accuracy = 0.0
-            
-            time.sleep(0.05) # 20Hz Simulation
-        except: time.sleep(1)
+            # NOTE: qber_rate is NOT reset to 0 here — that was bug #4
+
+            time.sleep(0.05)   # 20 Hz
+        except Exception:
+            time.sleep(1)
 
 def generate_ecg(t):
     """Generates a normalized procedural ECG-like 'Pulse' signal."""

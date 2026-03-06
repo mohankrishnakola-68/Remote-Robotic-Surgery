@@ -36,68 +36,63 @@ class QSDCEngine:
             
         return qc
         
-    def eavesdrop(self, qc: QuantumCircuit):
+    def check_eavesdrop(self):
         """
-        Simulate an eavesdropping attempt which collapses the quantum state.
+        Determine stochastically whether an eavesdropper intercepts this transmission.
+        NOTE: We do NOT apply measure_all() to the main circuit here — doing so would
+        collapse the state before decode() runs (double-measurement bug).
+        Instead we record the breach flag and abort decoding on the caller side.
         """
-        if random.random() < self.eavesdrop_probability:
-            # Eavesdropper measures the qubit in transit (qubit 0)
-            qc.measure_all()
-            return True
-        return False
+        return random.random() < self.eavesdrop_probability
 
     def decode(self, qc: QuantumCircuit):
         """
         Decode the quantum state back into classical bits.
+        The circuit must NOT have been measured before this call.
         """
         qc.cx(0, 1)
         qc.h(0)
         qc.measure_all()
-        
+
         result = self.simulator.run(qc, shots=1).result()
-        counts = result.get_counts()
-        
-        # Get the first (and only) measurement result
+        counts  = result.get_counts()
+
         measured_string = list(counts.keys())[0]
-        
-        # Provide logic to clean up any space delimiters that Qiskit sometimes adds
-        measured_string = measured_string.replace(' ', '')
-        
-        # Using little-endian by default in Qiskit, so [::-1] 
-        measured_bits = measured_string[::-1] 
-        return measured_bits[:2] # ensure exactly 2 bits
+        measured_string = measured_string.replace(' ', '')   # strip Qiskit space delimiters
+        measured_bits   = measured_string[::-1]              # little-endian → big-endian
+        return measured_bits[:2]                             # exactly 2 bits
 
     def transmit_data(self, data_stream: str):
         """
-        Simulate the transmission of a binary string, detecting any eavesdropping.
-        Returns the received string and a boolean indicating if security was breached.
+        Issue 1 & 2 — Latency + Security:
+        Transmit a binary string through the simulated QSDC channel.
+        Returns (received_bits, security_breached).
         """
-        # Pad with leading '0' if odd length
+        # Pad to even length
         if len(data_stream) % 2 != 0:
-            data_stream = '0' + data_stream 
-            
+            data_stream = '0' + data_stream
+
         received_stream = ""
         security_breach = False
-        
-        # Process 2 bits at a time
+
         for i in range(0, len(data_stream), 2):
             bit_pair = data_stream[i:i+2]
-            
-            # Encode classical bits into entangled qubit states
+
+            # 1. Encode into entangled quantum state
             qc = self.encode(bit_pair)
-            
-            # Simulate transit & potential eavesdropping interception
-            if self.eavesdrop(qc):
+
+            # 2. Stochastic eavesdrop check (does NOT touch the circuit)
+            if self.check_eavesdrop():
                 security_breach = True
-                
+
             if not security_breach:
-                # Decode quantum states back to classical representation
-                decoded_pair = self.decode(qc)
+                # 3. Decode — circuit is still in superposition, safe to measure
+                decoded_pair  = self.decode(qc)
                 received_stream += decoded_pair
             else:
-                # If breached, the entangled state is destroyed; transmission aborted / corrupted
+                # Entanglement collapsed → transmission aborted
                 received_stream += "XX"
-                
+
         return received_stream, security_breach
 
 def int_to_bin_str(value, bits=8):
