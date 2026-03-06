@@ -505,21 +505,35 @@ def main():
         print(f"[Console UI] No display detected or window error: {e}")
         
     cap = None
-    try:
-        print("[Console UI] Attempting to open camera (DirectShow)...")
-        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-        if cap and cap.isOpened():
-            # Request High Clarity / HD Feed
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-            cap.set(cv2.CAP_PROP_FPS, 30)
-            print("[Console UI] Camera opened with HD settings.")
-        else:
-            print("[Console UI] Camera access failed. Running with placeholder data.")
-            cap = None
-    except Exception as e:
-        print(f"[Console UI] Camera error (drivers missing?): {e}")
-        cap = None
+    # Try multiple camera indices and backends to find a working camera
+    print("[Console UI] Scanning for camera...")
+    backends = [
+        (cv2.CAP_DSHOW,  "DirectShow"),
+        (cv2.CAP_ANY,    "Auto"),
+        (cv2.CAP_MSMF,   "MSMF"),
+    ]
+    for cam_idx in range(4):           # Try indices 0-3
+        if cap is not None:
+            break
+        for backend, bname in backends:
+            try:
+                print(f"[Console UI] Trying camera index {cam_idx} ({bname})...")
+                _cap = cv2.VideoCapture(cam_idx, backend)
+                if _cap and _cap.isOpened():
+                    ret, test_frame = _cap.read()   # Verify we actually get a frame
+                    if ret and test_frame is not None:
+                        _cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
+                        _cap.set(cv2.CAP_PROP_FRAME_HEIGHT,  720)
+                        _cap.set(cv2.CAP_PROP_FPS, 30)
+                        cap = _cap
+                        print(f"[Console UI] Camera OK — index {cam_idx} via {bname}")
+                        break
+                    else:
+                        _cap.release()
+            except Exception as e:
+                print(f"[Console UI] Camera {cam_idx}/{bname} error: {e}")
+    if cap is None:
+        print("[Console UI] No camera found. Video feed will show placeholder.")
     
     start_time = time.time()
     print("[Console UI] Starting Main loop...")
